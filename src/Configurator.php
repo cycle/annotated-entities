@@ -83,9 +83,14 @@ final class Configurator
      * @param EntitySchema     $entity
      * @param \ReflectionClass $class
      * @param string           $columnPrefix
+     * @param bool             $skipInherited
      */
-    public function initFields(EntitySchema $entity, \ReflectionClass $class, string $columnPrefix = ''): void
-    {
+    public function initFields(
+        EntitySchema $entity,
+        \ReflectionClass $class,
+        string $columnPrefix = '',
+        $skipInherited = false
+    ): void {
         foreach ($class->getProperties() as $property) {
             try {
                 /** @var Column $column */
@@ -98,6 +103,22 @@ final class Configurator
                 continue;
             }
 
+            if ($skipInherited && $property->getDeclaringClass()->getName() !== $entity->getClass()) {
+                if ($column->getType() === 'primary' || $column->isPrimary()) {
+                    $relation = new Relation();
+                    $relation->setType('belongsTo');
+                    $relation->setTarget($property->getDeclaringClass()->getName());
+                    $relation->getOptions()->set('innerKey', $property->getName());
+
+                    $entity->getRelations()->set(
+                        $this->inflector->camelize($property->getDeclaringClass()->getShortName()),
+                        $relation
+                    );
+                } else {
+                    continue;
+                }
+            }
+
             $entity->getFields()->set(
                 $property->getName(),
                 $this->initField($property->getName(), $column, $class, $columnPrefix)
@@ -108,10 +129,15 @@ final class Configurator
     /**
      * @param EntitySchema     $entity
      * @param \ReflectionClass $class
+     * @param bool             $skipInherited
      */
-    public function initRelations(EntitySchema $entity, \ReflectionClass $class): void
+    public function initRelations(EntitySchema $entity, \ReflectionClass $class, $skipInherited = false): void
     {
         foreach ($class->getProperties() as $property) {
+            if ($skipInherited && $property->getDeclaringClass()->getName() !== $entity->getClass()) {
+                continue;
+            }
+
             try {
                 $metadata = $this->reader->getPropertyMetadata($property);
             } catch (Exception $e) {
